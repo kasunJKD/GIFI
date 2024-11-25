@@ -4,113 +4,16 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/codecrafters-io/interpreter-starter-go/gen"
+	"github.com/codecrafters-io/interpreter-starter-go/tokens"
 )
 
 var hadError bool
 
-type TokenType string
-
-const (
-	//single character tokens
-	LEFT_PAREN  TokenType = "LEFT_PAREN"
-	RIGHT_PAREN TokenType = "RIGHT_PAREN"
-	LEFT_BRACE  TokenType = "LEFT_BRACE"
-	RIGHT_BRACE TokenType = "RIGHT_BRACE"
-	COMMA       TokenType = "COMMA"
-	DOT         TokenType = "DOT"
-	MINUS       TokenType = "MINUS"
-	PLUS        TokenType = "PLUS"
-	SEMICOLON   TokenType = "SEMICOLON"
-	SLASH       TokenType = "SLASH"
-	STAR        TokenType = "STAR"
-
-	// One or two character tokens.
-	BANG          TokenType = "BANG"
-	BANG_EQUAL    TokenType = "BANG_EQUAL"
-	EQUAL         TokenType = "EQUAL"
-	EQUAL_EQUAL   TokenType = "EQUAL_EQUAL"
-	GREATER       TokenType = "GREATER"
-	GREATER_EQUAL TokenType = "GREATER_EQUAL"
-	LESS          TokenType = "LESS"
-	LESS_EQUAL    TokenType = "LESS_EQUAL"
-
-	// Literals.
-	IDENTIFIER TokenType = "IDENTIFIER"
-	STRING     TokenType = "STRING"
-	NUMBER     TokenType = "NUMBER"
-
-	// Keywords.
-	AND    TokenType = "AND"
-	CLASS  TokenType = "CLASS"
-	ELSE   TokenType = "ELSE"
-	FALSE  TokenType = "FALSE"
-	FUN    TokenType = "FUN"
-	FOR    TokenType = "FOR"
-	IF     TokenType = "IF"
-	NIL    TokenType = "NIL"
-	OR     TokenType = "OR"
-	PRINT  TokenType = "PRINT"
-	RETURN TokenType = "RETURN"
-	SUPER  TokenType = "SUPER"
-	THIS   TokenType = "THIS"
-	TRUE   TokenType = "TRUE"
-	VAR    TokenType = "VAR"
-	WHILE  TokenType = "WHILE"
-	EOF    TokenType = "EOF"
-)
-
-var keywords map[string]TokenType
-
-func createKeyWords() {
-	keywords = make(map[string]TokenType)
-
-	keywords["and"] = AND
-	keywords["class"] = CLASS
-	keywords["else"] = ELSE
-	keywords["false"] = FALSE
-	keywords["fun"] = FUN
-	keywords["for"] = FOR
-	keywords["if"] = IF
-	keywords["nil"] = NIL
-	keywords["or"] = OR
-	keywords["print"] = PRINT
-	keywords["return"] = RETURN
-	keywords["super"] = SUPER
-	keywords["this"] = THIS
-	keywords["true"] = TRUE
-	keywords["var"] = VAR
-	keywords["while"] = WHILE
-}
-
-type Token struct {
-	Type    TokenType
-	Lexeme  string
-	Literal interface{}
-	Line    int
-}
-
-func NewToken(tokenType TokenType, lexeme string, literal interface{}, line int) Token {
-	return Token{
-		Type:    tokenType,
-		Lexeme:  lexeme,
-		Literal: literal,
-		Line:    line,
-	}
-}
-
-func (t Token) String() string {
-	var literal string
-	if t.Literal == nil {
-		literal = "null"
-	} else {
-		literal = fmt.Sprintf("%v", t.Literal)
-	}
-	return fmt.Sprintf("%s %s %s", t.Type, t.Lexeme, literal)
-}
-
 // scanner->start
 type Scanner struct {
-	Tokens []*Token
+	Tokens []*tokens.Token
 	Source string
 
 	start   int
@@ -129,14 +32,14 @@ func NewScanner(source string) *Scanner {
 }
 
 // ScanTokens scans all tokens in the source
-func (s *Scanner) ScanTokens() []*Token {
+func (s *Scanner) ScanTokens() []*tokens.Token {
 	for !s.isAtEnd() {
 		s.start = s.current
 		s.scanToken()
 	}
 
-	s.Tokens = append(s.Tokens, &Token{
-		Type:   EOF,
+	s.Tokens = append(s.Tokens, &tokens.Token{
+		Type:   tokens.EOF,
 		Lexeme: "",
 		Line:   s.line,
 	})
@@ -154,55 +57,55 @@ func (s *Scanner) scanToken() {
 	c := s.advance()
 	switch c {
 	case '(':
-		s.addToken(LEFT_PAREN, nil)
+		s.addToken(tokens.LEFT_PAREN, nil)
 	case ')':
-		s.addToken(RIGHT_PAREN, nil)
+		s.addToken(tokens.RIGHT_PAREN, nil)
 	case '{':
-		s.addToken(LEFT_BRACE, nil)
+		s.addToken(tokens.LEFT_BRACE, nil)
 	case '}':
-		s.addToken(RIGHT_BRACE, nil)
+		s.addToken(tokens.RIGHT_BRACE, nil)
 	case ',':
-		s.addToken(COMMA, nil)
+		s.addToken(tokens.COMMA, nil)
 	case '.':
-		s.addToken(DOT, nil)
+		s.addToken(tokens.DOT, nil)
 	case '-':
-		s.addToken(MINUS, nil)
+		s.addToken(tokens.MINUS, nil)
 	case '+':
-		s.addToken(PLUS, nil)
+		s.addToken(tokens.PLUS, nil)
 	case ';':
-		s.addToken(SEMICOLON, nil)
+		s.addToken(tokens.SEMICOLON, nil)
 	case '*':
-		s.addToken(STAR, nil)
+		s.addToken(tokens.STAR, nil)
 	case '=':
-		var enumval TokenType
+		var enumval tokens.TokenType
 		if s.match('=') {
-			enumval = EQUAL_EQUAL
+			enumval = tokens.EQUAL_EQUAL
 		} else {
-			enumval = EQUAL
+			enumval = tokens.EQUAL
 		}
 		s.addToken(enumval, nil)
 	case '!':
-		var enumval TokenType
+		var enumval tokens.TokenType
 		if s.match('=') {
-			enumval = BANG_EQUAL
+			enumval = tokens.BANG_EQUAL
 		} else {
-			enumval = BANG
+			enumval = tokens.BANG
 		}
 		s.addToken(enumval, nil)
 	case '<':
-		var enumval TokenType
+		var enumval tokens.TokenType
 		if s.match('=') {
-			enumval = LESS_EQUAL
+			enumval = tokens.LESS_EQUAL
 		} else {
-			enumval = LESS
+			enumval = tokens.LESS
 		}
 		s.addToken(enumval, nil)
 	case '>':
-		var enumval TokenType
+		var enumval tokens.TokenType
 		if s.match('=') {
-			enumval = GREATER_EQUAL
+			enumval = tokens.GREATER_EQUAL
 		} else {
-			enumval = GREATER
+			enumval = tokens.GREATER
 		}
 		s.addToken(enumval, nil)
 	case '/':
@@ -211,7 +114,7 @@ func (s *Scanner) scanToken() {
 				s.advance()
 			}
 		} else {
-			s.addToken(SLASH, nil)
+			s.addToken(tokens.SLASH, nil)
 		}
 	case '\n':
 		s.line++
@@ -278,7 +181,7 @@ func (s *Scanner) string() {
 	s.advance()
 
 	value := s.Source[s.start+1 : s.current-1]
-	s.addToken(STRING, value)
+	s.addToken(tokens.STRING, value)
 }
 
 func (s *Scanner) isDigit(c byte) bool {
@@ -309,7 +212,7 @@ func (s *Scanner) number() {
 	}
 
 	// Add the formatted value as a token
-	s.addToken(NUMBER, formattedValue)
+	s.addToken(tokens.NUMBER, formattedValue)
 }
 
 func (s *Scanner) identifer() {
@@ -318,9 +221,9 @@ func (s *Scanner) identifer() {
 	}
 
 	text := s.Source[s.start:s.current]
-	tokenType := keywords[text]
+	tokenType := tokens.Keywords[text]
 	if tokenType == "" {
-		tokenType = IDENTIFIER
+		tokenType = tokens.IDENTIFIER
 	}
 
 	s.addToken(tokenType, nil)
@@ -341,9 +244,9 @@ func (s *Scanner) nextPeek() byte {
 	return '"'
 }
 
-func (s *Scanner) addToken(tokenType TokenType, literal interface{}) {
+func (s *Scanner) addToken(tokenType tokens.TokenType, literal interface{}) {
 	text := s.Source[s.start:s.current]
-	s.Tokens = append(s.Tokens, &Token{
+	s.Tokens = append(s.Tokens, &tokens.Token{
 		Type:    tokenType,
 		Lexeme:  text,
 		Literal: literal,
@@ -369,6 +272,56 @@ func report(line int, where string, message string, value string) {
 	}
 }
 
+// AST expr
+// Expr section
+// type Expr interface {
+// 	accpet(visiter VisitorExpr) interface{}
+// }
+//
+// type VisitorExpr interface {
+// 	VisitBinaryExpr(expr *Binary) interface{}
+// }
+
+// visitor type definitons for interface @use this to access !!!!!
+// type VisitorType struct{}
+//
+// func (v VisitorType) VisitBinaryExpr(expr *Binary) interface{} {
+//
+// }
+
+// binary expr section
+// type Binary struct {
+// 	Left     Expr
+// 	Right    Expr
+// 	Operator tokens.Token
+// }
+//
+// func NewBinary(left Expr, right Expr, op tokens.Token) *Binary {
+// 	return &Binary{
+// 		Left:     left,
+// 		Right:    right,
+// 		Operator: op,
+// 	}
+// }
+
+// binary accpet interface base
+// func (b *Binary) accpet(v VisitorExpr) interface{} {
+// 	return v.VisitBinaryExpr(b)
+// }
+
+// Parser start===>
+type Parser struct {
+	tokens  []*tokens.Token
+	current int
+}
+
+func NewParser(tokens_ []*tokens.Token) *Parser {
+	return &Parser{
+		tokens:  tokens_,
+		current: 0,
+	}
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "Usage: ./your_program.sh tokenize <filename>")
@@ -377,28 +330,32 @@ func main() {
 
 	command := os.Args[1]
 
-	if command != "tokenize" {
+	if (command != "tokenize") && (command != "gen-ast") {
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		os.Exit(1)
 	}
 
-	filename := os.Args[2]
-	fileContents, err := os.ReadFile(filename)
+	if command == "gen-ast" {
+		gen.GenerateAST()
+	} else {
+		filename := os.Args[2]
+		fileContents, err := os.ReadFile(filename)
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
-	}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+			os.Exit(1)
+		}
 
-	createKeyWords()
+		tokens.CreateKeyWords()
 
-	source := string(fileContents)
+		source := string(fileContents)
 
-	scanner := NewScanner(source)
-	tokens := scanner.ScanTokens()
+		scanner := NewScanner(source)
+		tokens := scanner.ScanTokens()
 
-	for _, token := range tokens {
-		fmt.Println(token.String())
+		for _, token := range tokens {
+			fmt.Println(token.String())
+		}
 	}
 
 	// Exit with code 65 if any errors occurred

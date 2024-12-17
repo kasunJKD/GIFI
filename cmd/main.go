@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
-	"github.com/codecrafters-io/interpreter-starter-go/gen"
-	"github.com/codecrafters-io/interpreter-starter-go/tokens"
+	"go-intepreter/gen"
+	"go-intepreter/tokens"
 )
 
 var hadError bool
@@ -135,6 +136,7 @@ func (s *Scanner) scanToken() {
 			s.identifer()
 		} else {
 			error(s.line, "Unexpected character:", string(c))
+			os.Exit(1) // Terminate on unexpected characters
 		}
 	}
 }
@@ -309,57 +311,262 @@ func report(line int, where string, message string, value string) {
 // 	return v.VisitBinaryExpr(b)
 // }
 
+// visitor type definitons for interface @use this to access !!!!!
+type ASTPrinter struct{}
+
+func (a *ASTPrinter) VisitBinaryExpr(expr *gen.Binary) string {
+	return a.Paranthesize(expr.Operator.Lexeme, expr.Left, expr.Right)
+}
+
+func (a *ASTPrinter) VisitGroupingExpr(expr *gen.Grouping) string {
+	return a.Paranthesize("group", expr.Expression)
+}
+
+func (a *ASTPrinter) VisitLiteralExpr(expr *gen.Literal) string {
+	if expr.Value == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("%v", expr.Value)
+}
+
+func (a *ASTPrinter) VisitUnaryExpr(expr *gen.Unary) string {
+	return a.Paranthesize(expr.Operator.Lexeme, expr.Right)
+}
+
+func (v *ASTPrinter) Paranthesize(name string, exprs ...gen.Expr) string {
+    var builder strings.Builder
+
+    builder.WriteString("(" + name)
+    for _, expr := range exprs {
+        if expr != nil {
+            builder.WriteString(" ")
+            builder.WriteString(expr.Accept(v))
+        } else {
+            builder.WriteString(" <nil> ") // Handle nil expressions gracefully
+        }
+    }
+    builder.WriteString(")")
+
+    return builder.String()
+}
 // Parser start===>
 type Parser struct {
 	tokens  []*tokens.Token
 	current int
 }
 
-func NewParser(tokens_ []*tokens.Token) *Parser {
+func NewParser(tokens []*tokens.Token) *Parser {
 	return &Parser{
-		tokens:  tokens_,
+		tokens:  tokens,
 		current: 0,
 	}
 }
 
+func (p *Parser) expression() gen.Expr {
+	return p.equality()
+}
+
+func (p *Parser) equality() gen.Expr {
+	expr := p.comparison()
+
+	for p.match(tokens.BANG_EQUAL, tokens.EQUAL_EQUAL) {
+		op := p.previous()
+		right := p.comparison()
+		expr = gen.NewBinary(expr, right, op)
+	}
+	return expr
+}
+
+func (p *Parser) comparison() gen.Expr {
+	expr := p.term()
+
+	for p.match(tokens.GREATER, tokens.GREATER_EQUAL, tokens.LESS, tokens.LESS_EQUAL) {
+		op := p.previous()
+		right := p.term()
+		expr = gen.NewBinary(expr, right, op)
+	}
+	return expr
+}
+
+func (p *Parser) term() gen.Expr {
+	expr := p.factor()
+
+	for p.match(tokens.MINUS, tokens.PLUS) {
+		op := p.previous()
+		right := p.factor()
+		expr = gen.NewBinary(expr, right, op)
+	}
+	return expr
+}
+
+func (p *Parser) factor() gen.Expr {
+	expr := p.unary()
+
+	for p.match(tokens.SLASH, tokens.STAR) {
+		op := p.previous()
+		right := p.unary()
+		expr = gen.NewBinary(expr, right, op)
+	}
+	return expr
+}
+
+func (p *Parser) unary() gen.Expr {
+	if p.match(tokens.BANG, tokens.MINUS) {
+		op := p.previous()
+		right := p.unary()
+		return gen.NewUnary(op, right)
+	}
+	return p.primary()
+}
+
+func (p *Parser) primary() gen.Expr {
+	if p.match(tokens.FALSE) {
+		return gen.NewLiteral(false)
+	}
+	if p.match(tokens.TRUE) {
+		return gen.NewLiteral(true)
+	}
+	if p.match(tokens.NIL) {
+		return gen.NewLiteral(nil)
+	}
+	if p.match(tokens.NUMBER, tokens.STRING) {
+		return gen.NewLiteral(p.previous().Literal)
+	}
+	if p.match(tokens.LEFT_PAREN) {
+		expr := p.expression()
+		p.consume(tokens.RIGHT_PAREN, "Expect ')' after expression")
+		return gen.NewGrouping(expr)
+	}
+	error(p.peek().Line, "Expect expression.", "")
+	return nil
+}
+
+func (p *Parser) parse() gen.Expr {
+    defer func() {
+        if r := recover(); r != nil {
+            fmt.Println("Error during parsing:", r)
+        }
+    }()
+    expr := p.expression()
+    if expr == nil {
+        error(p.peek().Line, "Failed to parse expression.", "")
+        os.Exit(1) // Terminate parsing on error
+    }
+    return expr
+}
+
+func (p *Parser) synchronize() {
+	p.advance()
+
+	for !p.isAtEnd() {
+		if p.previous().Type == tokens.SEMICOLON {
+			return
+		}
+
+		switch p.peek().Type {
+		case tokens.CLASS, tokens.FUN, tokens.VAR, tokens.FOR, tokens.IF, tokens.WHILE, tokens.PRINT, tokens.RETURN:
+			return
+		}
+		p.advance()
+	}
+}
+
+func (p *Parser) match(types ...tokens.TokenType) bool {
+	for _, t := range types {
+		if p.check(t) {
+			p.advance()
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Parser) check(t tokens.TokenType) bool {
+	if p.isAtEnd() {
+		return false
+	}
+	return p.peek().Type == t
+}
+
+func (p *Parser) advance() *tokens.Token {
+	if !p.isAtEnd() {
+		p.current++
+	}
+	return p.previous()
+}
+
+func (p *Parser) isAtEnd() bool {
+	return p.peek().Type == tokens.EOF
+}
+
+func (p *Parser) peek() *tokens.Token {
+	return p.tokens[p.current]
+}
+
+func (p *Parser) previous() *tokens.Token {
+	return p.tokens[p.current-1]
+}
+
+func (p *Parser) consume(tokenType tokens.TokenType, message string) *tokens.Token {
+	if p.check(tokenType) {
+		return p.advance()
+	}
+	return nil
+	//panic(p.error(p.peek(), message))
+}
+
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "Usage: ./your_program.sh tokenize <filename>")
+		fmt.Println("Usage: ./your_program.sh <command> <source-file>")
 		os.Exit(1)
 	}
 
 	command := os.Args[1]
+	filename := os.Args[2]
 
-	if (command != "tokenize") && (command != "gen-ast") {
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
-		os.Exit(1)
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not read file: %s\n", err)
+		os.Exit(65)
 	}
 
-	if command == "gen-ast" {
-		gen.GenerateAST()
-	} else {
-		filename := os.Args[2]
-		fileContents, err := os.ReadFile(filename)
-
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-			os.Exit(1)
-		}
-
-		tokens.CreateKeyWords()
-
-		source := string(fileContents)
-
+	source := string(data)
+	switch command {
+	case "tokenize":
 		scanner := NewScanner(source)
 		tokens := scanner.ScanTokens()
-
 		for _, token := range tokens {
-			fmt.Println(token.String())
+			fmt.Println(token)
 		}
-	}
 
-	// Exit with code 65 if any errors occurred
-	if hadError {
-		os.Exit(65)
+case "parse":
+    scanner := NewScanner(source)
+    tokens := scanner.ScanTokens()
+    if hadError {
+        os.Exit(1) // Stop if scanning failed
+    }
+    parser := NewParser(tokens)
+    expr := parser.parse()
+    if expr != nil {
+        printer := &ASTPrinter{}
+        switch e := expr.(type) {
+        case *gen.Binary:
+            fmt.Println(printer.VisitBinaryExpr(e))
+        case *gen.Grouping:
+            fmt.Println(printer.VisitGroupingExpr(e))
+        case *gen.Unary:
+            fmt.Println(printer.VisitUnaryExpr(e))
+        case *gen.Literal:
+            fmt.Println(printer.VisitLiteralExpr(e))
+        default:
+            fmt.Println("Unknown expression type.")
+        }
+    } else {
+        fmt.Println("Parsing failed.")
+    }	
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
+		os.Exit(1)
 	}
 }

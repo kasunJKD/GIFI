@@ -39,7 +39,7 @@ func DefineAST(outputdir string, packageName string, types []ExprType) {
 	_, err = fmt.Fprintln(f, "package ", packageName)
 	check(err)
 
-	line := fmt.Sprintf("import %s", "github.com/codecrafters-io/interpreter-starter-go/tokens")
+	line := fmt.Sprintln(`import "github.com/codecrafters-io/interpreter-starter-go/tokens"`)
 	//imports
 	fmt.Fprintln(f, line)
 	//expr interface

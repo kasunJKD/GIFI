@@ -1,15 +1,21 @@
 package gen
 
-import tokens "go-intepreter/tokens"
+
+
+import (
+	"strconv"
+
+	tokens "go-intepreter/tokens"
+)
 
 type Expr interface {
-	Accept(visitor VisitorExpr) string
+	Accept(visitor VisitorExpr)interface{} 	
 }
 type VisitorExpr interface {
-	VisitBinaryExpr(expr *Binary) string
-	VisitUnaryExpr(expr *Unary) string
-	VisitGroupingExpr(expr *Grouping) string
-	VisitLiteralExpr(expr *Literal) string
+	VisitBinaryExpr(expr *Binary) interface{} 
+	VisitUnaryExpr(expr *Unary) interface{} 
+	VisitGroupingExpr(expr *Grouping) interface{} 
+	VisitLiteralExpr(expr *Literal) interface{} 
 }
 type Binary struct {
 	Left     Expr
@@ -24,7 +30,7 @@ func NewBinary(Left Expr, Right Expr, Operator *tokens.Token) *Binary {
 		Operator: Operator,
 	}
 }
-func (a *Binary) Accept(v VisitorExpr) string {
+func (a *Binary) Accept(v VisitorExpr) interface{}  {
 	return v.VisitBinaryExpr(a)
 }
 
@@ -39,7 +45,7 @@ func NewUnary(Operator *tokens.Token, Right Expr) *Unary {
 		Right:    Right,
 	}
 }
-func (a *Unary) Accept(v VisitorExpr) string {
+func (a *Unary) Accept(v VisitorExpr) interface{}  {
 	return v.VisitUnaryExpr(a)
 }
 
@@ -52,7 +58,7 @@ func NewGrouping(Expression Expr) *Grouping {
 		Expression: Expression,
 	}
 }
-func (a *Grouping) Accept(v VisitorExpr) string {
+func (a *Grouping) Accept(v VisitorExpr) interface{}  {
 	return v.VisitGroupingExpr(a)
 }
 
@@ -61,10 +67,15 @@ type Literal struct {
 }
 
 func NewLiteral(Value interface{}) *Literal {
-	return &Literal{
-		Value: Value,
-	}
+    // Convert numeric literals to float64 explicitly
+    if v, ok := Value.(string); ok {
+        if num, err := strconv.ParseFloat(v, 64); err == nil {
+            return &Literal{Value: num}
+        }
+    }
+    return &Literal{Value: Value}
 }
-func (a *Literal) Accept(v VisitorExpr) string {
+
+func (a *Literal) Accept(v VisitorExpr) interface{}  {
 	return v.VisitLiteralExpr(a)
 }

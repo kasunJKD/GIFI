@@ -314,22 +314,22 @@ func report(line int, where string, message string, value string) {
 // visitor type definitons for interface @use this to access !!!!!
 type ASTPrinter struct{}
 
-func (a *ASTPrinter) VisitBinaryExpr(expr *gen.Binary) string {
+func (a *ASTPrinter) VisitBinaryExpr(expr *gen.Binary) interface{} {
 	return a.Paranthesize(expr.Operator.Lexeme, expr.Left, expr.Right)
 }
 
-func (a *ASTPrinter) VisitGroupingExpr(expr *gen.Grouping) string {
+func (a *ASTPrinter) VisitGroupingExpr(expr *gen.Grouping) interface{} {
 	return a.Paranthesize("group", expr.Expression)
 }
 
-func (a *ASTPrinter) VisitLiteralExpr(expr *gen.Literal) string {
+func (a *ASTPrinter) VisitLiteralExpr(expr *gen.Literal) interface{} {
 	if expr.Value == nil {
 		return "nil"
 	}
 	return fmt.Sprintf("%v", expr.Value)
 }
 
-func (a *ASTPrinter) VisitUnaryExpr(expr *gen.Unary) string {
+func (a *ASTPrinter) VisitUnaryExpr(expr *gen.Unary) interface{} {
 	return a.Paranthesize(expr.Operator.Lexeme, expr.Right)
 }
 
@@ -339,10 +339,15 @@ func (v *ASTPrinter) Paranthesize(name string, exprs ...gen.Expr) string {
     builder.WriteString("(" + name)
     for _, expr := range exprs {
         if expr != nil {
-            builder.WriteString(" ")
-            builder.WriteString(expr.Accept(v))
+            result := expr.Accept(v)
+            if str, ok := result.(string); ok {
+                builder.WriteString(" ")
+                builder.WriteString(str)
+            } else {
+                builder.WriteString(" <error: non-string result> ")
+            }
         } else {
-            builder.WriteString(" <nil> ") // Handle nil expressions gracefully
+            builder.WriteString(" <nil> ")
         }
     }
     builder.WriteString(")")
@@ -515,6 +520,128 @@ func (p *Parser) consume(tokenType tokens.TokenType, message string) *tokens.Tok
 	//panic(p.error(p.peek(), message))
 }
 
+type Interpreter struct{}
+
+func NewInterpreter() *Interpreter {
+	return &Interpreter{}
+}
+
+func (i *Interpreter) Evaluate(expr gen.Expr) interface{} {
+	return expr.Accept(i)
+}
+
+func (i *Interpreter) VisitLiteralExpr(expr *gen.Literal) interface{} {
+	return expr.Value
+}
+
+func (i *Interpreter) VisitGroupingExpr(expr *gen.Grouping) interface{} {
+	return i.Evaluate(expr.Expression)
+}
+
+func (i *Interpreter) VisitUnaryExpr(expr *gen.Unary) interface{} {
+    right := i.Evaluate(expr.Right)
+
+    switch expr.Operator.Type {
+    case tokens.MINUS:
+        if num, ok := right.(float64); ok {
+            return -num
+        }
+        fmt.Println("Operand must be a number.")
+        os.Exit(1)
+    case tokens.BANG:
+        return !i.isTruthy(right)
+    }
+
+    // Unreachable
+    return nil
+}
+
+func (i *Interpreter) VisitBinaryExpr(expr *gen.Binary) interface{} {
+    left := i.Evaluate(expr.Left)
+    right := i.Evaluate(expr.Right)
+
+    switch expr.Operator.Type {
+    case tokens.PLUS:
+        switch l := left.(type) {
+        case float64:
+            if r, ok := right.(float64); ok {
+                return l + r
+            }
+        case string:
+            if r, ok := right.(string); ok {
+                return l + r
+            }
+        }
+        fmt.Println("Operands must be two numbers or two strings.")
+        os.Exit(1)
+
+    case tokens.MINUS, tokens.STAR, tokens.SLASH:
+        l, lok := left.(float64)
+        r, rok := right.(float64)
+        if !lok || !rok {
+            fmt.Println("Operands must be numbers.")
+            os.Exit(1)
+        }
+        switch expr.Operator.Type {
+        case tokens.MINUS:
+            return l - r
+        case tokens.STAR:
+            return l * r
+        case tokens.SLASH:
+            if r == 0 {
+                fmt.Println("Division by zero.")
+                os.Exit(1)
+            }
+            return l / r
+        }
+
+    case tokens.GREATER, tokens.GREATER_EQUAL, tokens.LESS, tokens.LESS_EQUAL:
+        l, lok := left.(float64)
+        r, rok := right.(float64)
+        if !lok || !rok {
+            fmt.Println("Operands must be numbers.")
+            os.Exit(1)
+        }
+        switch expr.Operator.Type {
+        case tokens.GREATER:
+            return l > r
+        case tokens.GREATER_EQUAL:
+            return l >= r
+        case tokens.LESS:
+            return l < r
+        case tokens.LESS_EQUAL:
+            return l <= r
+        }
+
+    case tokens.EQUAL_EQUAL:
+        return i.isEqual(left, right)
+    case tokens.BANG_EQUAL:
+        return !i.isEqual(left, right)
+    }
+
+    // Unreachable
+    return nil
+}
+func (i *Interpreter) isTruthy(object interface{}) bool {
+	if object == nil {
+		return false
+	}
+	if b, ok := object.(bool); ok {
+		return b
+	}
+	return true
+}
+
+func (i *Interpreter) isEqual(a, b interface{}) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil {
+		return false
+	}
+	return a == b
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: ./your_program.sh <command> <source-file>")
@@ -539,7 +666,7 @@ func main() {
 			fmt.Println(token)
 		}
 
-case "parse":
+	case "parse":
     scanner := NewScanner(source)
     tokens := scanner.ScanTokens()
     if hadError {
@@ -563,7 +690,18 @@ case "parse":
         }
     } else {
         fmt.Println("Parsing failed.")
-    }	
+    }
+	case "interp":
+		scanner := NewScanner(source)
+		tokens := scanner.ScanTokens()
+		if hadError {
+			os.Exit(1) // Stop if scanning failed
+		}
+		parser := NewParser(tokens)
+		expr := parser.parse()
+		interpreter := NewInterpreter()
+		result := interpreter.Evaluate(expr)
+		fmt.Println("Result:", result)	
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)

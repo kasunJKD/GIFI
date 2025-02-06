@@ -1,0 +1,8 @@
+﻿  chunk.c
+  debug.c
+  main.c
+  value.c
+  Generating Code...
+D:\Personal\GIFI\CIFI\debug.c(27,16): warning C4013: 'constantInstruction' undefined; assuming extern returning int
+D:\Personal\GIFI\CIFI\debug.c(29,16): warning C4013: 'simpleInstruction' undefined; assuming extern returning int
+  CIFI.vcxproj -> D:\Personal\GIFI\CIFI\x64\Debug\CIFI.exe
